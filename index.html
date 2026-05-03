@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>zuzumushy's chat</title>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Chat area */
+   #chat {
+  flex: 1;
+  overflow-y: auto;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  background-image: url('https://i.pinimg.com/736x/57/5c/88/575c88e37dfe0eb0952505cf3eab2789.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  
+}
+
+    /* Reply preview box */
+    #replyBox {
+      display: none;
+      padding: 6px 10px;
+      background: #eee;
+      border-left: 4px solid #1e88e5;
+      font-size: 13px;
+    }
+
+    /* Input area */
+    #inputArea {
+      background: white;
+      border-top: 1px solid #ccc;
+      padding: 10px;
+    }
+
+    #msg {
+      width: 100%;
+      min-height: auto;
+      max-height: auto;
+      resize: none;
+      padding: 8px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+
+    .inputRow {
+      display: flex;
+      gap: 6px;
+      margin-top: 5px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+    .msg-text {
+      margin: 0;
+      padding: 0;
+      line-height: 1.2;   /* key change */
+     }
+     
+     .msg-time {
+       font-size: 10px;
+       opacity: 0.7;
+       margin-top: 2px;
+       text-align: right;
+       line-height: 1;
+      }
+
+      
+  </style>
+</head>
+
+<body>
+
+<div id="app">
+
+  <div id="chat"></div>
+
+  <div id="replyBox">
+    Replying to: <span id="replyText"></span>
+    <button onclick="cancelReply()">✖</button>
+  </div>
+
+  <div id="inputArea">
+    <div>
+      <button onclick="addEmoji('❤️')">❤️</button>
+      <button onclick="addEmoji('😂')">😂</button>
+      <button onclick="addEmoji('😎')">😎</button>
+      <button onclick="addEmoji('😡')">😡</button>
+      <button onclick="addEmoji('💋')">💋</button>
+      <button onclick="addEmoji('🤤')">🤤</button>
+      <button onclick="addEmoji('😍')">😍</button>
+      <button onclick="addEmoji('🥺')">🥺</button>
+      <button onclick="addEmoji('🥸')">🥸</button>
+    </div>
+
+    <div class="inputRow">
+      <textarea id="msg" placeholder="Type message"></textarea>
+      <button onclick="sendMsg()">Send</button>
+    </div>
+  </div>
+
+</div>
+
+
+
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, updateDoc, doc, deleteDoc }   
+from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+let firstLoad = true;
+let shouldScroll = false;
+
+//protection
+const PASSWORD = "zm"; // change this
+const entered = prompt("Enter password:");
+
+if (entered !== PASSWORD) {
+  document.body.innerHTML = "<h2>Access denied</h2>";
+  throw new Error("Unauthorized");
+}
+
+/* 🔥 YOUR CONFIG */
+const firebaseConfig = {
+  apiKey: "AIzaSyCGL24BmvMdrMuMmTdB5ZmsBpXyr_c2ok0",
+  authDomain: "zuzumushy-9f5c8.firebaseapp.com",
+  projectId: "zuzumushy-9f5c8"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* 👤 Username */
+let username = localStorage.getItem("username");
+if (!username) {
+  username = prompt("Enter your name:");
+  localStorage.setItem("username", username);
+}
+
+/* 💬 Reply state */
+let replyingTo = null;
+
+/* 📤 Send message */
+window.sendMsg = async function () {
+  const input = document.getElementById("msg");
+  const text = input.value.trim();
+  if (!text) return;
+  shouldScroll = true;
+
+  await addDoc(collection(db, "messages"), {
+  text,
+  user: username,
+  time: Date.now(),
+  replyTo: replyingTo || null,
+  seen: false
+});
+
+  input.value = "";
+  cancelReply();
+};
+
+/* 💬 Reply functions */
+window.setReply = function(id, text) {
+  replyingTo = id;
+  document.getElementById("replyBox").style.display = "block";
+  document.getElementById("replyText").innerText = text.substring(0, 40);
+};
+
+window.cancelReply = function() {
+  replyingTo = null;
+  document.getElementById("replyBox").style.display = "none";
+};
+
+/* 😊 Emoji */
+window.addEmoji = function(emoji) {
+  const input = document.getElementById("msg");
+  input.value += emoji;
+  input.focus();
+};
+
+/* ⌨️ Enter send */
+const textarea = document.getElementById("msg");
+
+textarea.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMsg();
+  }
+});
+
+/* 📈 Auto grow (controlled) */
+textarea.addEventListener("input", () => {
+  textarea.style.height = "auto";
+  textarea.style.height = Math.min(textarea.scrollHeight, 90) + "px";
+});
+
+/* 📥 Render messages */
+const q = query(collection(db, "messages"), orderBy("time"));
+
+onSnapshot(q, async (snapshot) => {
+
+  const chat = document.getElementById("chat");
+  const prevScroll = chat.scrollTop;
+  const prevHeight = chat.scrollHeight;
+  chat.innerHTML = "";
+
+  // 🔥 STEP 1: mark messages as seen (SAFE)
+  const updates = [];
+
+  snapshot.forEach(d => {
+    const data = d.data();
+
+    if (data.user !== username && !data.seen) {
+      updates.push(
+        updateDoc(doc(db, "messages", d.id), { seen: true })
+      );
+    }
+  });
+
+  if (updates.length > 0) {
+    await Promise.all(updates);
+  }
+
+  // 🔥 STEP 2: render messages (your UI)
+  snapshot.forEach((doc, index) => {
+  const data = doc.data();
+  const text = data.text.replace(/\n/g, "<br>");
+  const time = formatTime(data.time);
+
+  const prevDoc = snapshot.docs[index - 1];
+  const prevUser = prevDoc ? prevDoc.data().user : null;
+
+  const showUsername = data.user !== prevUser;
+    let replyPreview = "";
+    if (data.replyTo) {
+      const ref = snapshot.docs.find(d => d.id === data.replyTo);
+      if (ref) {
+        replyPreview = `
+  <div style="
+    font-size:11px;
+    opacity:0.7;
+    border-left:3px solid #888;
+    padding-left:6px;
+    margin-bottom:2px;
+  ">
+    ${ref.data().text.substring(0, 40)}
+  </div>
+`;
+      }
+    }
+
+    const safeText = data.text.replace(/'/g, "\\'");
+
+    if (data.user === username) {
+      chat.innerHTML += `
+        <div style="display:flex; justify-content:flex-end;">
+          <div onclick="setReply('${doc.id}', '${safeText}')" style="
+            background:#dd70dc;
+            color:white;
+            padding:5px 10px;
+            border-radius:16px;
+            max-width:280px;
+            display:inline-flex;
+            flex-direction:column;
+            word-break:break-word;
+            white-space:pre-wrap;
+            text-align:left;
+            box-sizing:border-box;
+          ">
+            ${replyPreview}
+            <div class="msg-text">${text}</div>
+           <div style="
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:6px;
+  font-size:10px;
+  opacity:0.7;
+  margin-top:2px;
+">
+  <span>
+    ${time} ${data.seen ? "✔✔" : "✔"}
+  </span>
+
+  <span 
+    style="cursor:pointer;"
+    onclick="deleteMsg('${doc.id}')"
+  >
+    🗑
+  </span>
+</div>
+          </div>
+        </div>
+      `;
+    } else {
+      chat.innerHTML += `
+  <div style="display:flex; justify-content:flex-start;">
+    <div onclick="setReply('${doc.id}', '${safeText}')" style="
+      background:#714cad;
+       color:white;
+      padding:4px 8px;
+      border-radius:16px;
+      max-width:280px;
+      display:flex;
+      flex-direction:column;
+      gap:3px;
+      word-break:break-word;
+      white-space:pre-wrap;
+      box-sizing:border-box;
+    ">
+      
+      <!-- username -->
+      ${showUsername ? `
+  <div style="
+    font-size:14px;
+    font-weight:600;
+    color:#222;
+    margin-bottom:2px;
+  ">
+    ${data.user}
+  </div>
+` : ""}
+
+      <!-- reply preview -->
+      ${replyPreview}
+
+      <!-- message -->
+      <div class="msg-text">${text}</div>
+
+      <!-- time -->
+      <div class="msg-time">${time}</div>
+
+    </div>
+  </div>
+`;
+    }
+ });
+ 
+ //scroll section
+ if (firstLoad) {
+  setTimeout(() => {
+    chat.scrollTop = chat.scrollHeight;
+  }, 0);
+  firstLoad = false;
+}
+else if (shouldScroll) {
+  setTimeout(() => {
+    chat.scrollTop = chat.scrollHeight;
+  }, 0);
+  shouldScroll = false;
+}
+else {
+  // 🔥 restore previous position
+  setTimeout(() => {
+    chat.scrollTop = prevScroll + (chat.scrollHeight - prevHeight);
+  }, 0);
+}
+
+  
+});
+//time function
+function formatTime(ms) {
+  const date = new Date(ms);
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+ 
+  });
+  
+}
+
+//delete function
+window.deleteMsg = async function(id) {
+  if (!confirm("Delete this message?")) return;
+
+  await deleteDoc(doc(db, "messages", id));
+};
+
+
+
+</script>
+
+</body>
+</html>
