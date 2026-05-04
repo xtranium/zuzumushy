@@ -7,7 +7,7 @@
     html, body {
       height: 100%;
       margin: 0;
-      font-family: Arial, sans-serif;
+      font-family: 'Poppins', sans-serif;
       background: #f5f5f5;
     }
 
@@ -26,11 +26,11 @@
   flex-direction: column;
   gap: 10px;
 
-  background-image: url('https://i.pinimg.com/736x/57/5c/88/575c88e37dfe0eb0952505cf3eab2789.jpg');
+  background-image: url('https://i.pinimg.com/736x/c6/cf/93/c6cf93c1e250cb381073e43c546cdd89.jpg');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
+  
   
 }
 
@@ -38,32 +38,50 @@
     #replyBox {
       display: none;
       padding: 6px 10px;
-      background: #eee;
+      background: #e398cd;
       border-left: 4px solid #1e88e5;
       font-size: 13px;
     }
 
     /* Input area */
     #inputArea {
-      background: white;
+      background: rgb(237, 233, 233);
       border-top: 1px solid #ccc;
       padding: 10px;
+      background-image: url('https://i.pinimg.com/736x/c4/b0/51/c4b051310e05cabcc697e7b4082afa70.jpg');
+ background-size: contain;
+  background-position: right; /* Centers the image */
+  background-repeat:repeat;
     }
 
     #msg {
-      width: 100%;
-      min-height: auto;
-      max-height: auto;
-      resize: none;
-      padding: 8px;
-      box-sizing: border-box;
-      font-size: 14px;
-    }
+  width: 100%;
+  min-height: 40px;
+  max-height: 120px;
+  resize: none;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  box-sizing: border-box;
+
+  background:#c20000;
+  backdrop-filter: blur(6px);
+ background-image: url('https://i.pinimg.com/1200x/d1/d2/43/d1d24331ae51c45780879197d3f35082.jpg');
+ background-size: contain;
+  background-position: right; /* Centers the image */
+  background-repeat: no-repeat;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
 
     .inputRow {
       display: flex;
       gap: 6px;
       margin-top: 5px;
+      
     }
 
     button {
@@ -129,7 +147,7 @@ from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 let firstLoad = true;
 let shouldScroll = false;
-
+let lastMessageCount = 0;
 //protection
 const PASSWORD = "zm"; // change this
 const entered = prompt("Enter password:");
@@ -221,161 +239,162 @@ onSnapshot(q, async (snapshot) => {
   const chat = document.getElementById("chat");
   const prevScroll = chat.scrollTop;
   const prevHeight = chat.scrollHeight;
-  chat.innerHTML = "";
 
-  // 🔥 STEP 1: mark messages as seen (SAFE)
-  const updates = [];
-
-  snapshot.forEach(d => {
-    const data = d.data();
-
+  // 🔥 STEP 1: mark ONLY latest unseen message as seen (prevents spam)
+  const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+  if (lastDoc) {
+    const data = lastDoc.data();
     if (data.user !== username && !data.seen) {
-      updates.push(
-        updateDoc(doc(db, "messages", d.id), { seen: true })
-      );
+      await updateDoc(doc(db, "messages", lastDoc.id), { seen: true });
     }
-  });
-
-  if (updates.length > 0) {
-    await Promise.all(updates);
   }
 
-  // 🔥 STEP 2: render messages (your UI)
-  snapshot.forEach((doc, index) => {
-  const data = doc.data();
-  const text = data.text.replace(/\n/g, "<br>");
-  const time = formatTime(data.time);
+  // 🔥 STEP 2: if messages deleted → reset
+  if (snapshot.docs.length < lastMessageCount) {
+    chat.innerHTML = "";
+    lastMessageCount = 0;
+  }
 
-  const prevDoc = snapshot.docs[index - 1];
-  const prevUser = prevDoc ? prevDoc.data().user : null;
+  // 🔥 STEP 3: build HTML (NO DOM SPAM)
+  let html = "";
 
-  const showUsername = data.user !== prevUser;
+  snapshot.docs.forEach((doc, index) => {
+    if (index < lastMessageCount) return;
+
+    const data = doc.data();
+    const text = data.text.replace(/\n/g, "<br>");
+    const time = formatTime(data.time);
+    const safeText = data.text.replace(/'/g, "\\'");
+
+    const prevDoc = snapshot.docs[index - 1];
+    const prevUser = prevDoc ? prevDoc.data().user : null;
+    const showUsername = data.user !== prevUser;
+
     let replyPreview = "";
     if (data.replyTo) {
       const ref = snapshot.docs.find(d => d.id === data.replyTo);
       if (ref) {
         replyPreview = `
-  <div style="
-    font-size:11px;
-    opacity:0.7;
-    border-left:3px solid #888;
-    padding-left:6px;
-    margin-bottom:2px;
-  ">
-    ${ref.data().text.substring(0, 40)}
-  </div>
-`;
+          <div style="
+            font-size:11px;
+            opacity:0.7;
+            border-left:3px solid #888;
+            padding-left:6px;
+            margin-bottom:2px;
+            
+
+          ">
+            ${ref.data().text.substring(0, 40)}
+          </div>
+        `;
       }
     }
 
-    const safeText = data.text.replace(/'/g, "\\'");
-
+    // 🔵 YOUR MESSAGE
     if (data.user === username) {
-      chat.innerHTML += `
+      html += `
         <div style="display:flex; justify-content:flex-end;">
           <div onclick="setReply('${doc.id}', '${safeText}')" style="
             background:#dd70dc;
-            color:white;
-            padding:5px 10px;
-            border-radius:16px;
-            max-width: min(60%, 550px);
-            display:inline-flex;
-            flex-direction:column;
-            word-break:break-word;
-            white-space:pre-wrap;
-            text-align:left;
-            box-sizing:border-box;
+            color: white;
+  padding: 5px 10px;
+  border-radius: 16px;
+  max-width: min(60%, 550px);
+  display: flex;
+  flex-direction: column;
+  word-break: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+          
+
+
           ">
             ${replyPreview}
             <div class="msg-text">${text}</div>
-           <div style="
-  display:flex;
-  justify-content:flex-end;
-  align-items:center;
-  gap:6px;
-  font-size:10px;
-  opacity:0.7;
-  margin-top:2px;
-">
-  <span>
-    ${time} ${data.seen ? "✔✔" : "✔"}
-  </span>
 
-  <span 
-    style="cursor:pointer;"
-    onclick="deleteMsg('${doc.id}')"
-  >
-    🗑
-  </span>
-</div>
+            <div style="
+              display:flex;
+              justify-content:flex-end;
+              align-items:center;
+              gap:6px;
+              font-size:10px;
+              opacity:0.7;
+              margin-top:2px;
+            ">
+              <span>${time} ${data.seen ? "✔✔" : "✔"}</span>
+              <span style="cursor:pointer;" onclick="deleteMsg('${doc.id}')">🗑</span>
+            </div>
           </div>
         </div>
       `;
-    } else {
-      chat.innerHTML += `
-  <div style="display:flex; justify-content:flex-start;">
-    <div onclick="setReply('${doc.id}', '${safeText}')" style="
-      background:#714cad;
-       color:white;
-      padding:4px 8px;
-      border-radius:16px;
-      max-width: min(60%, 550px);
-      display:flex;
-      flex-direction:column;
-      gap:3px;
-      word-break:break-word;
-      white-space:pre-wrap;
-      box-sizing:border-box;
-    ">
-      
-      <!-- username -->
-      ${showUsername ? `
+    }
+
+    // ⚪ GF MESSAGE
+    else {
+      html += `
+        <div style="display:flex; justify-content:flex-start;">
+          <div onclick="setReply('${doc.id}', '${safeText}')" style="
+            background: #714cad;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 16px;
+  max-width: min(60%, 550px);
+  display: flex;
+  flex-direction: column;
+  word-break: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+
+          
+    
+          ">
+
+            ${showUsername ? `
   <div style="
     font-size:14px;
-    font-weight:600;
-    color:#222;
+    font-weight:800;
+    opacity:0.8;
     margin-bottom:2px;
+    line-height:1;color:black;
+    text-shadow: 0 0 10px #FFC0CB, 
+                 0 0 20px #FFC0CB, 
+                 0 0 30px #FFC0CB;
+    
   ">
     ${data.user}
   </div>
 ` : ""}
 
-      <!-- reply preview -->
-      ${replyPreview}
+            ${replyPreview}
+            <div class="msg-text">${text}</div>
 
-      <!-- message -->
-      <div class="msg-text">${text}</div>
+            <div class="msg-time">${time}</div>
 
-      <!-- time -->
-      <div class="msg-time">${time}</div>
-
-    </div>
-  </div>
-`;
+          </div>
+        </div>
+      `;
     }
- });
- 
- //scroll section
- if (firstLoad) {
-  setTimeout(() => {
-    chat.scrollTop = chat.scrollHeight;
-  }, 0);
-  firstLoad = false;
-}
-else if (shouldScroll) {
-  setTimeout(() => {
-    chat.scrollTop = chat.scrollHeight;
-  }, 0);
-  shouldScroll = false;
-}
-else {
-  // 🔥 restore previous position
-  setTimeout(() => {
-    chat.scrollTop = prevScroll + (chat.scrollHeight - prevHeight);
-  }, 0);
-}
+  });
 
-  
+  // 🔥 STEP 4: apply HTML ONCE (no lag)
+  chat.innerHTML += html;
+
+  // 🔥 STEP 5: update count
+  lastMessageCount = snapshot.docs.length;
+
+  // 🔥 STEP 6: scroll logic
+  if (firstLoad) {
+    chat.scrollTop = chat.scrollHeight;
+    firstLoad = false;
+  }
+  else if (shouldScroll) {
+    chat.scrollTop = chat.scrollHeight;
+    shouldScroll = false;
+  }
+  else {
+    chat.scrollTop = prevScroll + (chat.scrollHeight - prevHeight);
+  }
+
 });
 //time function
 function formatTime(ms) {
