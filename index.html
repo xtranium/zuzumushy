@@ -26,11 +26,13 @@
   flex-direction: column;
   gap: 10px;
 
-  background-image: url('https://i.pinimg.com/736x/c6/cf/93/c6cf93c1e250cb381073e43c546cdd89.jpg');
-  background-size: cover;
+
+  background-image: url('https://files.catbox.moe/rdb9fg.jpg');
+  background-size:contain;
   background-position: center;
   background-repeat: no-repeat;
   
+
   
 }
 
@@ -149,13 +151,7 @@ let firstLoad = true;
 let shouldScroll = false;
 let lastMessageCount = 0;
 //protection
-const PASSWORD = "zm"; // change this
-const entered = prompt("Enter password:");
 
-if (entered !== PASSWORD) {
-  document.body.innerHTML = "<h2>Access denied</h2>";
-  throw new Error("Unauthorized");
-}
 
 /* 🔥 YOUR CONFIG */
 const firebaseConfig = {
